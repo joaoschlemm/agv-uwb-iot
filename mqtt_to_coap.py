@@ -1,6 +1,6 @@
-
 import asyncio
 import json
+import time
 import paho.mqtt.client as mqtt
 from aiocoap import *
 from twilio.rest import Client
@@ -10,18 +10,24 @@ MQTT_BROKER = "192.168.190.7"
 MQTT_TOPIC = "dwm/node/4685/uplink/location"
 NODEMCU_IP = "192.168.190.40"
 DESTINO = {"x": 1.6, "y": 3.0}
+ORIGEM = {"x": 0.0, "y": 0.0}
 TOLERANCIA = 0.3
 
 # Dados da conta Twilio
-TWILIO_SID = "***"
-TWILIO_TOKEN = "***"
-TWILIO_WHATSAPP_FROM = "+***"
-TWILIO_WHATSAPP_TO = "+55***"
+TWILIO_SID = "xxx"
+TWILIO_TOKEN = "xxx"
+TWILIO_WHATSAPP_FROM = "+14155238886"
+TWILIO_WHATSAPP_TO = "+554799114215"
 
 # Estado compartilhado
 estado = {
     "ja_enviou_stop": False,
-    "posicao_atual": None
+    "posicao_atual": None,
+    "em_viagem": False,
+    "tempo_inicio": None,
+    "tempo_retorno": None,
+    "mensagem_enviada_destino": False,
+    "mensagem_enviada_origem": False
 }
 
 # Fila para comandos CoAP
@@ -29,13 +35,14 @@ comando_queue = asyncio.Queue()
 
 def chegou_ao_destino(pos):
     return abs(pos["x"] - DESTINO["x"]) < TOLERANCIA and abs(pos["y"] - DESTINO["y"]) < TOLERANCIA
+def chegou_a_origem(pos):
+    return abs(pos["x"] - ORIGEM["x"]) < TOLERANCIA and abs(pos["y"] - ORIGEM["y"]) < TOLERANCIA
 
 async def enviar_comando_coap():
     while True:
         comando = await comando_queue.get()
         print(f"[CoAP] Comando recebido na fila: {comando}")
         if comando == "STOP":
-            sucesso = False
             try:
                 protocol = await Context.create_client_context()
                 request = Message(code=PUT, uri=f"coap://{NODEMCU_IP}/stop", payload=b"1")
@@ -46,20 +53,13 @@ async def enviar_comando_coap():
                 print("[CoAP] Timeout ao tentar enviar comando STOP.")
             except Exception as e:
                 print("[CoAP] Erro ao enviar comando:", e)
-            else:
-                sucesso = True
 
-            # Envia WhatsApp independentemente do sucesso do CoAP
-            mensagem = "O seguidor chegou ao destino. "
-            mensagem += "Comando STOP enviado com sucesso." if sucesso else "Falha ao enviar comando STOP."
-            asyncio.create_task(enviar_whatsapp_async(mensagem))
 
 def enviar_whatsapp(mensagem):
     print(f"[Twilio] Preparando envio: {mensagem}")
     try:
         client = Client(TWILIO_SID, TWILIO_TOKEN)
         message = client.messages.create(
-#            body=mensagem,
             from_=f'whatsapp:{TWILIO_WHATSAPP_FROM}',
             to=f'whatsapp:{TWILIO_WHATSAPP_TO}',
             content_sid="HXfc92efcb2636b564eb7d4163960bad11",
@@ -86,7 +86,6 @@ def on_message(client, userdata, msg):
             return
         pos = {"x": x, "y": y}
         estado["posicao_atual"] = pos
-#        print(f"[MQTT] Posição atual recebida: {pos}")
     except Exception as e:
         print("[MQTT] Erro ao processar mensagem:", e)
 
@@ -96,17 +95,28 @@ async def monitorar_posicao():
         pos = estado["posicao_atual"]
         if pos:
             if chegou_ao_destino(pos):
-                print("[Monitoramento] Dentro da área de tolerância.")
-                print(f"[MQTT] Posição atual recebida: {pos}")
-                if not estado["ja_enviou_stop"]:
-                    print("[Monitoramento] Chegou ao destino! Enviando comando STOP via CoAP...")
-                    print(f"[MQTT] Posição atual recebida: {pos}")
+                if not estado.get("mensagem_enviada_destino", False):
+                    estado["em_viagem"] = True
+                    estado["tempo_inicio"] = time.time()
+                    estado["mensagem_enviada_destino"] = True
+                    print("[Monitoramento] Chegou ao destino.")
+
                     await comando_queue.put("STOP")
-                    estado["ja_enviou_stop"] = True
-            else:
-                print("[Monitoramento] Fora da área de tolerância.")
-                print(f"[MQTT] Posição atual recebida: {pos}")
-                # Não reseta a flag para evitar reenvio desnecessário
+
+                    mensagem = "O seguidor chegou ao destino. Comando STOP enviado."
+                    asyncio.create_task(enviar_whatsapp_async(mensagem))
+
+            elif chegou_a_origem(pos) and estado["em_viagem"]:
+                if not estado.get("mensagem_enviada_origem", False):
+                    estado["tempo_retorno"] = time.time()
+                    estado["mensagem_enviada_origem"] = True
+                    print("[Monitoramento] Retornou à origem.")
+
+                    await comando_queue.put("STOP")
+
+                    tempo_total = estado["tempo_retorno"] - estado["tempo_inicio"]
+                    mensagem = f"O seguidor retornou à origem. Tempo total: {tempo_total:.2f} segundos. Comando STOP enviado."
+                    asyncio.create_task(enviar_whatsapp_async(mensagem))
 
 def main():
     client = mqtt.Client()
