@@ -1,3 +1,4 @@
+import os
 import asyncio
 import json
 import time
@@ -14,10 +15,14 @@ ORIGEM = {"x": 0.0, "y": 0.0}
 TOLERANCIA = 0.3
 
 # Dados da conta Twilio
-TWILIO_SID = "xxx"
-TWILIO_TOKEN = "xxx"
+TWILIO_SID = "***"
+TWILIO_TOKEN = "***"
 TWILIO_WHATSAPP_FROM = "+14155238886"
 TWILIO_WHATSAPP_TO = "+554799114215"
+
+# content_sid específicos
+CONTENT_SID_DESTINO = "HX7a6a7c6caa0b6cf34e43b5fdfab28981"
+CONTENT_SID_ORIGEM = "HXd0b701f95b1f4080a8854d1582c91447"
 
 # Estado compartilhado
 estado = {
@@ -35,6 +40,7 @@ comando_queue = asyncio.Queue()
 
 def chegou_ao_destino(pos):
     return abs(pos["x"] - DESTINO["x"]) < TOLERANCIA and abs(pos["y"] - DESTINO["y"]) < TOLERANCIA
+
 def chegou_a_origem(pos):
     return abs(pos["x"] - ORIGEM["x"]) < TOLERANCIA and abs(pos["y"] - ORIGEM["y"]) < TOLERANCIA
 
@@ -54,25 +60,24 @@ async def enviar_comando_coap():
             except Exception as e:
                 print("[CoAP] Erro ao enviar comando:", e)
 
-
-def enviar_whatsapp(mensagem):
+def enviar_whatsapp(mensagem, content_sid):
     print(f"[Twilio] Preparando envio: {mensagem}")
     try:
         client = Client(TWILIO_SID, TWILIO_TOKEN)
         message = client.messages.create(
             from_=f'whatsapp:{TWILIO_WHATSAPP_FROM}',
             to=f'whatsapp:{TWILIO_WHATSAPP_TO}',
-            content_sid="HXfc92efcb2636b564eb7d4163960bad11",
+            content_sid=content_sid,
         )
         print(f"[Twilio] Mensagem enviada com sucesso. SID: {message.sid}")
     except Exception as e:
         print(f"[Twilio] Erro ao enviar WhatsApp: {e}")
         raise
 
-async def enviar_whatsapp_async(mensagem):
+async def enviar_whatsapp_async(mensagem, content_sid):
     print("[Twilio] Iniciando envio de mensagem WhatsApp...")
     try:
-        await asyncio.to_thread(enviar_whatsapp, mensagem)
+        await asyncio.to_thread(enviar_whatsapp, mensagem, content_sid)
         print("[Twilio] Envio de mensagem WhatsApp concluído.")
     except Exception as e:
         print(f"[Twilio] Falha ao enviar mensagem WhatsApp: {e}")
@@ -99,24 +104,24 @@ async def monitorar_posicao():
                     estado["em_viagem"] = True
                     estado["tempo_inicio"] = time.time()
                     estado["mensagem_enviada_destino"] = True
-                    print("[Monitoramento] Chegou ao destino.")
 
+                    print("[Monitoramento] Chegou ao destino.")
                     await comando_queue.put("STOP")
 
                     mensagem = "O seguidor chegou ao destino. Comando STOP enviado."
-                    asyncio.create_task(enviar_whatsapp_async(mensagem))
+                    asyncio.create_task(enviar_whatsapp_async(mensagem, CONTENT_SID_DESTINO))
 
             elif chegou_a_origem(pos) and estado["em_viagem"]:
                 if not estado.get("mensagem_enviada_origem", False):
                     estado["tempo_retorno"] = time.time()
                     estado["mensagem_enviada_origem"] = True
-                    print("[Monitoramento] Retornou à origem.")
 
+                    print("[Monitoramento] Retornou à origem.")
                     await comando_queue.put("STOP")
 
                     tempo_total = estado["tempo_retorno"] - estado["tempo_inicio"]
                     mensagem = f"O seguidor retornou à origem. Tempo total: {tempo_total:.2f} segundos. Comando STOP enviado."
-                    asyncio.create_task(enviar_whatsapp_async(mensagem))
+                    asyncio.create_task(enviar_whatsapp_async(mensagem, CONTENT_SID_ORIGEM))
 
 def main():
     client = mqtt.Client()
@@ -124,12 +129,17 @@ def main():
     client.connect(MQTT_BROKER, 1883, 60)
     client.subscribe(MQTT_TOPIC)
     client.loop_start()
-
-    loop = asyncio.get_event_loop()
+	
+	loop = asyncio.new_event_loop()
+	asyncio.set_event_loop(loop)
+	
     loop.create_task(enviar_comando_coap())
     loop.create_task(monitorar_posicao())
     loop.run_forever()
 
 if __name__ == "__main__":
+	
+	os.system('clear')
+
     print("[Sistema] Aguardando dados de localização da tag...")
     main()
