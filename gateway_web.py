@@ -1,9 +1,9 @@
-
 from flask import Flask, redirect, url_for, jsonify, request
 from twilio.twiml.messaging_response import MessagingResponse
 
 import asyncio
 import json
+import os
 from aiocoap import *
 
 app = Flask(__name__)
@@ -116,4 +116,5 @@ def whatsapp_reply():
     return str(response)
 
 if __name__ == '__main__':
+    os.system('clear')
     app.run(host='0.0.0.0', port=8088)
