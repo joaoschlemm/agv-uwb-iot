@@ -7,3 +7,5 @@ e fornece atualizações de localização em tempo real por meio da tecnologia U
 AGV envia uma notificação via WhatsApp. A arquitetura proposta é de baixo custo, escalável e adequada
 para ambientes de fábrica inteligente. Os resultados experimentais demonstram a precisão e confiabilidade
 do sistema em cenários de localização indoor.
+
+![agv](https://github.com/user-attachments/assets/1e94bc1c-8c19-4b56-bb01-86402ba699ed)
