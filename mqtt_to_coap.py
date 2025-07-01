@@ -3,20 +3,23 @@ import asyncio
 import json
 import time
 import paho.mqtt.client as mqtt
+import warnings
+warnings.filterwarnings("ignore", category=DeprecationWarning)
+
 from aiocoap import *
 from twilio.rest import Client
 
 # CONFIGURAÇÕES
-MQTT_BROKER = "192.168.190.7"
+MQTT_BROKER = "192.168.241.7"
 MQTT_TOPIC = "dwm/node/4685/uplink/location"
-NODEMCU_IP = "192.168.190.40"
+NODEMCU_IP = "192.168.241.40"
 DESTINO = {"x": 1.6, "y": 3.0}
 ORIGEM = {"x": 0.0, "y": 0.0}
 TOLERANCIA = 0.3
 
 # Dados da conta Twilio
-TWILIO_SID = "***"
-TWILIO_TOKEN = "***"
+TWILIO_SID = "ACe658214e9c9563081a7a75a6e84d50ed"
+TWILIO_TOKEN = "b5bc525b264ae1f0aed120c625323955"
 TWILIO_WHATSAPP_FROM = "+14155238886"
 TWILIO_WHATSAPP_TO = "+554799114215"
 
@@ -124,22 +127,22 @@ async def monitorar_posicao():
                     asyncio.create_task(enviar_whatsapp_async(mensagem, CONTENT_SID_ORIGEM))
 
 def main():
+    #client = mqtt.Client(protocol=mqtt.MQTTv5)
     client = mqtt.Client()
+
     client.on_message = on_message
     client.connect(MQTT_BROKER, 1883, 60)
     client.subscribe(MQTT_TOPIC)
     client.loop_start()
-	
-	loop = asyncio.new_event_loop()
-	asyncio.set_event_loop(loop)
-	
+
+    loop = asyncio.new_event_loop()
+    asyncio.set_event_loop(loop)
+
     loop.create_task(enviar_comando_coap())
     loop.create_task(monitorar_posicao())
     loop.run_forever()
 
 if __name__ == "__main__":
-	
-	os.system('clear')
-
+    os.system('clear')
     print("[Sistema] Aguardando dados de localização da tag...")
     main()

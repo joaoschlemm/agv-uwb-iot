@@ -1,4 +1,4 @@
-from flask import Flask, redirect, url_for, jsonify, request
+from flask import Flask, render_template, redirect, url_for, jsonify, request
 from twilio.twiml.messaging_response import MessagingResponse
 
 import asyncio
@@ -8,7 +8,7 @@ from aiocoap import *
 
 app = Flask(__name__)
 
-ESP_IP = "coap://192.168.190.40"  # IP do NodeMCU
+ESP_IP = "coap://192.168.241.40"  # IP do NodeMCU
 
 # Envia comando CoAP
 async def enviar_comando(endpoint, payload):
@@ -23,29 +23,7 @@ async def enviar_comando(endpoint, payload):
 
 @app.route('/')
 def index():
-    return '''
-    <html>
-    <head><meta charset="UTF-8"><title>Gateway CoAP</title></head>
-    <body>
-        <h1>Gateway CoAP - Controle do Seguidor de Linha</h1>
-        <button onclick="location.href='/start'">Start</button>
-        <button onclick="location.href='/stop'">Stop</button>
-        <button onclick="location.href='/inverter'">Inverter Lógica</button>
-        <br><br>
-        <h3>Velocidade</h3>
-        <input type="range" min="0" max="255" value="100" id="velEsq">
-        <input type="range" min="0" max="255" value="100" id="velDir">
-        <button onclick="atualizarVelocidade()">Atualizar</button>
-        <script>
-            function atualizarVelocidade() {
-                let esq = document.getElementById('velEsq').value;
-                let dir = document.getElementById('velDir').value;
-                fetch(`/setVelocidade?esq=${esq}&dir=${dir}`);
-            }
-        </script>
-    </body>
-    </html>
-    '''
+    return render_template('index.html')
 
 @app.route('/start')
 def start():
@@ -67,7 +45,7 @@ def set_velocidade():
     esq = request.args.get('esq')
     dir = request.args.get('dir')
     asyncio.run(enviar_comando("setVelocidade", f"{esq},{dir}"))
-    return redirect(url_for('index'))
+    return ('', 204)
 
 @app.route('/status')
 def status():
@@ -93,7 +71,7 @@ def whatsapp_reply():
         if incoming_msg in ['start', 'confirma']:
             asyncio.run(enviar_comando("start", "1"))
             msg.body("Robô iniciado. ✅")
-        elif incoming_msg in ['stop', 'Parar']:
+        elif incoming_msg in ['stop', 'parar']:
             asyncio.run(enviar_comando("stop", "1"))
             msg.body("Robô parado. 🛑")
         elif incoming_msg == 'inverter':
